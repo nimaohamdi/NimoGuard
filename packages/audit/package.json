@@ -8,6 +8,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "demo": "pnpm build && node dist/demo.js",
     "test": "pnpm build && node --test dist/**/*.test.js"
   },
   "dependencies": {
