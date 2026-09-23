@@ -17,10 +17,40 @@ export function matchesCapability(
     return false;
   }
 
-  return matchesScope(request.resource, capability.scope);
+  switch (request.action) {
+    case "filesystem.read":
+    case "filesystem.write":
+      return matchesPathScope(request.resource, capability.scope);
+    case "network.request":
+      return matchesNetworkScope(request.resource, capability.scope);
+    default:
+      // command.execute, tool.call: no matcher yet (default-deny)
+      return false;
+  }
 }
 
-function matchesScope(resource: string, scope: string): boolean {
+function matchesNetworkScope(resource: string, scope: string): boolean {
+  let url: URL;
+  try {
+    url = new URL(resource);
+  } catch {
+    return false;
+  }
+
+  if (url.protocol !== "https:") {
+    return false;
+  }
+
+  // Reject userinfo tricks like https://api.github.com@evil.com/
+  if (url.username !== "" || url.password !== "") {
+    return false;
+  }
+
+  // Scope is an exact hostname (no wildcards, no scheme, no path).
+  return url.hostname === scope.toLowerCase();
+}
+
+function matchesPathScope(resource: string, scope: string): boolean {
   if (!resource.startsWith("/") || !scope.startsWith("/")) {
     return false;
   }
