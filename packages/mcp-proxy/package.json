@@ -1,0 +1,19 @@
+{
+  "name": "@nimoguard/mcp-proxy",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "pnpm build && node --test dist/**/*.test.js"
+  },
+  "dependencies": {
+    "@nimoguard/audit": "workspace:*",
+    "@nimoguard/core": "workspace:*",
+    "@modelcontextprotocol/sdk": "1.31.0",
+    "zod": "^3.23.8"
+  }
+}
