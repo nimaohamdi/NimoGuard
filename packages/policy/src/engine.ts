@@ -21,6 +21,10 @@ function isExpired(capability: Capability, now: Date): boolean {
   return expiresAtMs <= now.getTime();
 }
 
+function requiresApproval(capability: Capability): boolean {
+  return capability.constraints?.["requireApproval"] === true;
+}
+
 export function authorize(
   request: AuthorizationRequest,
   capabilities: Capability[],
@@ -37,18 +41,32 @@ export function authorize(
     };
   }
 
-  const valid = matching.find((capability) => !isExpired(capability, now));
+  const valid = matching.filter((capability) => !isExpired(capability, now));
 
-  if (!valid) {
+  if (valid.length === 0) {
     return {
       decision: "DENY",
       reason: "Matching capability expired or invalid",
     };
   }
 
+  // If any valid matching capability grants plain ALLOW, that wins: the
+  // policy author explicitly allowed this without approval.
+  const plainAllow = valid.find((capability) => !requiresApproval(capability));
+
+  if (plainAllow) {
+    return {
+      decision: "ALLOW",
+      reason: "Matching capability found",
+      capabilityId: plainAllow.id,
+    };
+  }
+
+  const needsApproval = valid[0]!;
+
   return {
-    decision: "ALLOW",
-    reason: "Matching capability found",
-    capabilityId: valid.id,
+    decision: "REQUIRE_APPROVAL",
+    reason: "Matching capability requires approval",
+    capabilityId: needsApproval.id,
   };
 }

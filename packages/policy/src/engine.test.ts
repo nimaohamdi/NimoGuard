@@ -101,3 +101,53 @@ test("denies a capability with an unparseable expiresAt", () => {
   assert.equal(result.decision, "DENY");
   assert.equal(result.reason, "Matching capability expired or invalid");
 });
+
+test("requires approval when the matching capability demands it", () => {
+  const result = authorize(
+    makeRequest(),
+    [makeCapability({ constraints: { requireApproval: true } })],
+    NOW,
+  );
+
+  assert.equal(result.decision, "REQUIRE_APPROVAL");
+  assert.equal(result.capabilityId, "cap-project-read");
+});
+
+test("denies expired capability even if it requires approval", () => {
+  const result = authorize(
+    makeRequest(),
+    [
+      makeCapability({
+        constraints: { requireApproval: true },
+        expiresAt: "2026-09-23T11:00:00.000Z",
+      }),
+    ],
+    NOW,
+  );
+
+  assert.equal(result.decision, "DENY");
+});
+
+test("plain ALLOW wins when another matching capability does not require approval", () => {
+  const result = authorize(
+    makeRequest(),
+    [
+      makeCapability({ id: "cap-approval", constraints: { requireApproval: true } }),
+      makeCapability({ id: "cap-plain" }),
+    ],
+    NOW,
+  );
+
+  assert.equal(result.decision, "ALLOW");
+  assert.equal(result.capabilityId, "cap-plain");
+});
+
+test("ignores constraints without requireApproval", () => {
+  const result = authorize(
+    makeRequest(),
+    [makeCapability({ constraints: { someOtherThing: "x" } })],
+    NOW,
+  );
+
+  assert.equal(result.decision, "ALLOW");
+});
