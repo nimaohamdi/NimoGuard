@@ -23,8 +23,10 @@ export function matchesCapability(
       return matchesPathScope(request.resource, capability.scope);
     case "network.request":
       return matchesNetworkScope(request.resource, capability.scope);
+    case "tool.call":
+      return matchesToolScope(request.resource, capability.scope);
     default:
-      // command.execute, tool.call: no matcher yet (default-deny)
+      // command.execute: no matcher yet (default-deny)
       return false;
   }
 }
@@ -48,6 +50,57 @@ function matchesNetworkScope(resource: string, scope: string): boolean {
 
   // Scope is an exact hostname (no wildcards, no scheme, no path).
   return url.hostname === scope.toLowerCase();
+}
+
+interface McpRef {
+  server: string;
+  tool: string;
+}
+
+function parseMcpResource(resource: string): McpRef | null {
+  let url: URL;
+  try {
+    url = new URL(resource);
+  } catch {
+    return null;
+  }
+
+  if (url.protocol !== "mcp:") {
+    return null;
+  }
+
+  if (url.username !== "" || url.password !== "") {
+    return null;
+  }
+
+  const server = url.hostname;
+  // pathname includes the leading "/", e.g. "/create_issue"
+  const toolPath = url.pathname.replace(/^\//, "");
+
+  if (server === "" || toolPath === "" || toolPath.includes("/")) {
+    return null;
+  }
+
+  return { server, tool: toolPath };
+}
+
+function matchesToolScope(resource: string, scope: string): boolean {
+  const resourceRef = parseMcpResource(resource);
+  const scopeRef = parseMcpResource(scope);
+
+  if (!resourceRef || !scopeRef) {
+    return false;
+  }
+
+  if (resourceRef.server !== scopeRef.server) {
+    return false;
+  }
+
+  if (scopeRef.tool === "*") {
+    return true;
+  }
+
+  return resourceRef.tool === scopeRef.tool;
 }
 
 function matchesPathScope(resource: string, scope: string): boolean {
