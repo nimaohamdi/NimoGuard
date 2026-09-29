@@ -8,7 +8,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "pnpm build && node --test dist/**/*.test.js"
+    "test": "pnpm build && node --test dist/**/*.test.js",
+    "demo": "pnpm build && node dist/demo.js"
   },
   "dependencies": {
     "@nimoguard/audit": "workspace:*",
