@@ -1,4 +1,5 @@
 # NimoGuard
+
 ![CI](https://github.com/nimaohamdi/NimoGuard/actions/workflows/ci.yml/badge.svg)
 
 A capability-based, **default-deny** authorization gateway for AI agents.
@@ -31,6 +32,13 @@ failures all result in `DENY`.
         action: "network.request",
         scope: "api.github.com",
       },
+      {
+        id: "cap-3",
+        agentId: "agent-1",
+        action: "filesystem.write",
+        scope: "/workspace/project/deploy/**",
+        constraints: { requireApproval: true },
+      },
     ];
 
     const sink = new InMemoryAuditSink();
@@ -47,6 +55,11 @@ failures all result in `DENY`.
     );
 
     // { decision: "DENY", reason: "No matching capability", requestId: "..." }
+
+Try it yourself:
+
+    pnpm install
+    pnpm demo
 
 ## Architecture
 
@@ -74,6 +87,10 @@ Design decisions:
   scope exactly, so `api.github.com.evil.com` and
   `https://api.github.com@evil.com/` are denied.
 - **Expiry:** expired, exactly-expiring, and unparseable `expiresAt` are all denied.
+- **Human-in-the-loop:** a capability with `constraints.requireApproval: true`
+  returns `REQUIRE_APPROVAL` instead of `ALLOW` for the matching request. If
+  another matching capability grants plain access, that one wins.
+
 ## Status
 
 | Area | State |
@@ -82,9 +99,11 @@ Design decisions:
 | Network matcher (exact https host) | Done |
 | Expiring capabilities | Done |
 | Audit logging (fail-closed) | Done |
-| `REQUIRE_APPROVAL` / `RiskLevel` | Types defined, not used yet |
-| `constraints` on capabilities | Ignored for now |
+| `REQUIRE_APPROVAL` via `constraints.requireApproval` | Done |
+| `RiskLevel` (automatic risk scoring) | Not implemented |
 | `command.execute`, `tool.call` matchers | Not implemented (default-deny) |
+
+32 unit tests, all passing in CI.
 
 ## Threat model
 
@@ -106,6 +125,8 @@ Mitigated:
 - **TOCTOU:** the file system can change between the authorization check and
   the actual use. NimoGuard does not enforce the action itself.
 - **No wildcards for hosts:** network scopes are exact hostnames only.
+- **No matcher yet for `command.execute` or `tool.call`:** requests for these
+  actions are always denied, not evaluated against a real policy.
 - **Advisory layer:** NimoGuard returns decisions; it does not sandbox the agent.
   An agent that can bypass the gateway is not constrained by it.
 
@@ -113,6 +134,7 @@ Mitigated:
 
     pnpm install
     pnpm -r test
+    pnpm demo
 
 ## License
 
