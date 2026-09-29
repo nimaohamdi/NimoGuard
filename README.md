@@ -1,4 +1,5 @@
 # NimoGuard
+![CI](https://github.com/nimaohamdi/NimoGuard/actions/workflows/ci.yml/badge.svg)
 
 A capability-based, **default-deny** authorization gateway for AI agents.
 
