@@ -1,0 +1,21 @@
+{
+  "agentId": "agent-1",
+  "upstreamServerName": "demo-upstream",
+  "upstreamCommand": "node",
+  "upstreamArgs": ["dist/upstream-server.js"],
+  "capabilities": [
+    {
+      "id": "cap-echo",
+      "agentId": "agent-1",
+      "action": "tool.call",
+      "scope": "mcp://demo-upstream/echo"
+    },
+    {
+      "id": "cap-list-approval",
+      "agentId": "agent-1",
+      "action": "tool.call",
+      "scope": "mcp://demo-upstream/list_files",
+      "constraints": { "requireApproval": true }
+    }
+  ]
+}
