@@ -25,8 +25,9 @@ export function matchesCapability(
       return matchesNetworkScope(request.resource, capability.scope);
     case "tool.call":
       return matchesToolScope(request.resource, capability.scope);
+    case "command.execute":
+      return matchesCommandScope(request.resource, capability.scope);
     default:
-      // command.execute: no matcher yet (default-deny)
       return false;
   }
 }
@@ -101,6 +102,27 @@ function matchesToolScope(resource: string, scope: string): boolean {
   }
 
   return resourceRef.tool === scopeRef.tool;
+}
+
+// Shell metacharacters that could chain, pipe, redirect, substitute, or
+// background a command. Any of these anywhere in the resource means deny,
+// even if the first token matches an allowed executable.
+const SHELL_METACHARACTERS = /[;&|`$(){}<>\n\r]/;
+
+function matchesCommandScope(resource: string, scope: string): boolean {
+  const trimmed = resource.trim();
+
+  if (trimmed === "") {
+    return false;
+  }
+
+  if (SHELL_METACHARACTERS.test(resource)) {
+    return false;
+  }
+
+  const firstToken = trimmed.split(/\s+/)[0];
+
+  return firstToken === scope;
 }
 
 function matchesPathScope(resource: string, scope: string): boolean {
