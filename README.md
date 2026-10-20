@@ -4,7 +4,6 @@
 
 A **capability-based, default-deny authorization firewall for MCP servers and AI agents** — with both a policy engine and real enforcement, not just advice.
 
-
 NimoGuard sits between an AI agent and the actions it can take. It works two ways:
 
 1. **As an MCP proxy** — it sits in front of a real MCP server; every `tools/call` is checked before it reaches the upstream server.
@@ -47,15 +46,17 @@ Design decisions:
 
 ## Try the demos
 
+![NimoGuard enforce demo](docs/enforce-demo.gif)
+
     pnpm install
     pnpm demo                                 # audit-layer demo (ALLOW/DENY/REQUIRE_APPROVAL)
     pnpm --filter @nimoguard/mcp-proxy demo    # a real MCP proxy blocking/forwarding tool calls
     pnpm --filter @nimoguard/enforce demo      # real disk writes and a real child process, gated live
 
-The enforce demo actually writes a file to a temp sandbox, reads it back,
-runs a real `echo` subprocess — and then shows three attempts (writing
-outside the sandbox, running `rm`, chaining a command with `;`) being
-blocked before anything happens.
+The enforce demo (shown above) actually writes a file to a temp sandbox,
+reads it back, runs a real `echo` subprocess — and then shows three attempts
+(writing outside the sandbox, running `rm`, chaining a command with `;`)
+being blocked before anything happens.
 
 ## Using the MCP proxy with a real client (e.g. Claude Desktop)
 
