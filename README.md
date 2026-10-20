@@ -2,26 +2,28 @@
 
 ![CI](https://github.com/nimaohamdi/NimoGuard/actions/workflows/ci.yml/badge.svg)
 
-A **capability-based, default-deny authorization firewall for MCP servers** — and for any AI agent that reads files, calls APIs, or runs tools.
+A **capability-based, default-deny authorization firewall for MCP servers and AI agents** — with both a policy engine and real enforcement, not just advice.
 
-NimoGuard sits between an AI agent and the tools it can use. It sits in front of a Model Context Protocol (MCP) server as a proxy: every `tools/call` is checked against an explicit policy before it reaches the real server. Anything not explicitly granted is denied. Every decision can be audited.
+Try it live: **[Interactive demo →](https://claude.ai/artifact/SuCeC8vwZnPWvgiZ7p8zsa)**
+
+NimoGuard sits between an AI agent and the actions it can take. It works two ways:
+
+1. **As an MCP proxy** — it sits in front of a real MCP server; every `tools/call` is checked before it reaches the upstream server.
+2. **As a guarded execution layer** — `guardedReadFile`, `guardedWriteFile`, `guardedFetch`, and `guardedExec` only perform the real file read, file write, network request, or shell command **if the policy allows it**. Otherwise nothing happens — no file is touched, no process is spawned.
+
+Anything not explicitly granted is denied. Every decision can be audited.
 
 ## Why
 
 AI agents act on your machine and network. Prompts are not a security
 boundary — an agent that can call a tool will eventually be tricked into
 calling it the wrong way. NimoGuard puts an explicit, testable policy layer
-in front of that tool call, and it **fails closed**: invalid input, bad
+in front of the action itself, and it **fails closed**: invalid input, bad
 dates, and logging failures all result in `DENY`.
 
 ## Architecture
 
-    Agent (Claude, etc.) → NimoGuard proxy → real MCP server
-
-The proxy speaks MCP on both sides. To the agent, it looks like a normal MCP
-server. Internally, it forwards every request to the real (upstream) server —
-but only after `authorize()` has checked it against the agent's granted
-capabilities.
+    Agent → NimoGuard (proxy or guarded functions) → real action (file, network, process, MCP server)
 
 | Package | Role |
 |---|---|
@@ -30,31 +32,33 @@ capabilities.
 | `@nimoguard/policy` | `authorize(request, capabilities, now?)`, a pure function |
 | `@nimoguard/audit` | `authorizeAndAudit` plus pluggable sinks (in-memory, JSONL file) |
 | `@nimoguard/mcp-proxy` | An MCP server that authorizes and forwards `tools/call` to an upstream MCP server |
+| `@nimoguard/enforce` | `guardedReadFile` / `guardedWriteFile` / `guardedFetch` / `guardedExec` — real enforcement, not just a decision |
 
 Design decisions:
 
 - **Pure core.** `authorize` has no side effects. Logging lives in a separate layer.
 - **Injected clock.** The current time is a parameter, so tests never depend on the real clock.
 - **Fail closed everywhere.** If the audit sink throws, even an `ALLOW` becomes `DENY`.
-- **Deny before contact.** An unrecognized or ungranted tool name is rejected
-  before the proxy ever talks to the upstream server, so upstream never even
-  learns what was attempted.
+- **No shell in `guardedExec`.** Commands run through `execFile`, never a shell,
+  so even if a metacharacter ever slipped past the matcher, there's no shell
+  there to interpret it.
+- **Deny before contact.** An unrecognized or ungranted tool/file/command is
+  rejected before anything real happens — upstream servers, the filesystem,
+  and child processes are never touched for a denied request.
 
-## Try the MCP proxy demo
+## Try the demos
 
     pnpm install
-    pnpm --filter @nimoguard/mcp-proxy demo
+    pnpm demo                                 # audit-layer demo (ALLOW/DENY/REQUIRE_APPROVAL)
+    pnpm --filter @nimoguard/mcp-proxy demo    # a real MCP proxy blocking/forwarding tool calls
+    pnpm --filter @nimoguard/enforce demo      # real disk writes and a real child process, gated live
 
-This spins up a small demo upstream MCP server (three tools: `echo`,
-`list_files`, `read_file`) behind the NimoGuard proxy, then makes four calls
-as an agent would:
+The enforce demo actually writes a file to a temp sandbox, reads it back,
+runs a real `echo` subprocess — and then shows three attempts (writing
+outside the sandbox, running `rm`, chaining a command with `;`) being
+blocked before anything happens.
 
-- `echo` — granted outright → forwarded, `ALLOW`
-- `list_files` — granted but requires human approval → blocked, `REQUIRE_APPROVAL`
-- `read_file` — never granted → blocked, `DENY`
-- an unknown tool name → blocked, `DENY`, without ever reaching upstream
-
-## Using it with a real MCP client (e.g. Claude Desktop)
+## Using the MCP proxy with a real client (e.g. Claude Desktop)
 
 Point your MCP client at the proxy instead of the real server. In
 `claude_desktop_config.json`:
@@ -72,9 +76,9 @@ The proxy's capabilities and upstream command are currently configured in
 code (`createProxy(options)` in `proxy-server.ts`); a config-file-driven setup
 is on the roadmap.
 
-## Quick example (library usage)
+## Quick example (guarded execution)
 
-    import { authorizeAndAudit, InMemoryAuditSink } from "@nimoguard/audit";
+    import { guardedReadFile, AuthorizationError } from "@nimoguard/enforce";
 
     const capabilities = [
       {
@@ -82,30 +86,21 @@ is on the roadmap.
         agentId: "agent-1",
         action: "filesystem.read",
         scope: "/workspace/project/**",
-        expiresAt: "2026-12-31T00:00:00Z",
-      },
-      {
-        id: "cap-2",
-        agentId: "agent-1",
-        action: "tool.call",
-        scope: "mcp://github/*",
       },
     ];
 
-    const sink = new InMemoryAuditSink();
-
-    const decision = await authorizeAndAudit(
-      {
-        agentId: "agent-1",
-        sessionId: "session-1",
-        action: "filesystem.read",
-        resource: "/workspace/project/../.ssh/id_rsa",
-      },
-      capabilities,
-      sink,
-    );
-
-    // { decision: "DENY", reason: "No matching capability", requestId: "..." }
+    try {
+      const content = await guardedReadFile(
+        "agent-1",
+        "/workspace/project/../.ssh/id_rsa",
+        capabilities,
+      );
+    } catch (err) {
+      if (err instanceof AuthorizationError) {
+        console.log(err.decision, err.reason);
+        // "DENY" "No matching capability" — and the file was never opened.
+      }
+    }
 
 ## What is enforced today
 
@@ -117,15 +112,19 @@ is on the roadmap.
   is allowed, URLs with userinfo are rejected, and the hostname must match the
   scope exactly, so `api.github.com.evil.com` and
   `https://api.github.com@evil.com/` are denied.
+- **Command scopes:** only the first token of the command is matched against
+  the scope, and any shell metacharacter (`; & | \` $ ( ) < > newline`)
+  anywhere in the command denies it outright — `git status; rm -rf /` is
+  rejected even though it starts with an allowed binary.
 - **MCP tool scopes:** a scope like `mcp://github/create_issue` grants one
-  tool on one server; `mcp://github/*` grants every tool on that server. A
-  different server is never matched by a wildcard scope for another server.
+  tool on one server; `mcp://github/*` grants every tool on that server.
 - **Expiry:** expired, exactly-expiring, and unparseable `expiresAt` are all denied.
 - **Human-in-the-loop:** a capability with `constraints.requireApproval: true`
-  returns `REQUIRE_APPROVAL` instead of `ALLOW` for the matching request. If
-  another matching capability grants plain access, that one wins.
-- **The MCP proxy enforces all of the above at the transport level:** a
-  blocked `tools/call` never reaches the upstream server.
+  returns `REQUIRE_APPROVAL` instead of `ALLOW`.
+- **Real enforcement, not just a decision:** the MCP proxy and the
+  `@nimoguard/enforce` functions actually gate the real action — a blocked
+  file write never touches disk, a blocked command never spawns a process, a
+  blocked tool call never reaches the upstream MCP server.
 
 ## Status
 
@@ -133,16 +132,17 @@ is on the roadmap.
 |---|---|
 | Filesystem matcher | Done |
 | Network matcher (exact https host) | Done |
+| Command matcher (first token + shell metacharacter guard) | Done |
 | MCP tool matcher (exact + server wildcard) | Done |
 | Expiring capabilities | Done |
 | Audit logging (fail-closed) | Done |
 | `REQUIRE_APPROVAL` via `constraints.requireApproval` | Done |
 | MCP proxy (stdio, forwards `tools/list` and `tools/call`) | Done |
+| Guarded fs/network/exec enforcement (`@nimoguard/enforce`) | Done |
 | `RiskLevel` (automatic risk scoring) | Not implemented |
-| `command.execute` matcher | Not implemented (default-deny) |
-| Config-file-driven proxy setup | Not implemented (code-configured only) |
+| Config-file-driven proxy/agent setup | Not implemented (code-configured only) |
 
-47 unit and integration tests, all passing in CI.
+66 unit and integration tests, all passing in CI.
 
 ## Threat model
 
@@ -153,34 +153,38 @@ Mitigated:
 - Path traversal (`..`), relative paths, null bytes
 - Prefix-lookalike paths (`/workspace/project2`)
 - Lookalike hosts and userinfo tricks in URLs
+- Command chaining, piping, substitution, redirection, and backgrounding
 - Lookalike MCP server names, and cross-server leakage via wildcard scopes
 - Expired or malformed capabilities
 - Silent audit failure (logging errors deny the request)
 - Tool-name enumeration: an unrecognized tool is denied before the upstream
   server is ever contacted
+- Shell injection in `guardedExec`: commands run via `execFile`, never a shell
 
 ## Known limitations
 
 - **Symlink escape:** path checks are string-based. A symlink inside an
-  allowed directory can point outside it. The execution layer must resolve
-  paths with `fs.realpath` before acting.
+  allowed directory can point outside it. The guarded functions do not
+  resolve paths with `fs.realpath` yet.
 - **TOCTOU:** the file system can change between the authorization check and
-  the actual use. NimoGuard does not enforce the action itself.
+  the actual use.
 - **No wildcards for network hosts:** network scopes are exact hostnames only.
-- **No matcher yet for `command.execute`:** requests for this action are
-  always denied, not evaluated against a real policy.
-- **`REQUIRE_APPROVAL` has no interactive approval flow yet:** the proxy
-  currently just blocks it with a clear message; there is no UI or channel
-  for a human to approve it in-flow.
-- **Advisory layer:** NimoGuard returns decisions; it does not sandbox the agent.
-  An agent that can bypass the gateway is not constrained by it.
+- **Library-level enforcement, not a sandbox:** the MCP proxy and guarded
+  functions enforce policy for any code that calls through them. They cannot
+  stop code that bypasses them entirely and calls `fs`, `fetch`, or
+  `child_process` directly — that would require an OS-level sandbox (seccomp,
+  containers, etc.), which is out of scope for this project.
+- **`REQUIRE_APPROVAL` has no interactive approval flow yet:** it currently
+  just blocks with a clear message; there is no UI or channel for a human to
+  approve it in-flow.
 
 ## Development
 
     pnpm install
     pnpm -r test
-    pnpm demo                                     # audit-layer demo
-    pnpm --filter @nimoguard/mcp-proxy demo        # MCP proxy demo
+    pnpm demo
+    pnpm --filter @nimoguard/mcp-proxy demo
+    pnpm --filter @nimoguard/enforce demo
 
 ## License
 
