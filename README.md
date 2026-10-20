@@ -4,7 +4,6 @@
 
 A **capability-based, default-deny authorization firewall for MCP servers and AI agents** — with both a policy engine and real enforcement, not just advice.
 
-Try it live: **[Interactive demo →](https://claude.ai/artifact/SuCeC8vwZnPWvgiZ7p8zsa)**
 
 NimoGuard sits between an AI agent and the actions it can take. It works two ways:
 
