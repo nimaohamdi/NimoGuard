@@ -2,12 +2,12 @@
 
 ![CI](https://github.com/nimaohamdi/NimoGuard/actions/workflows/ci.yml/badge.svg)
 
-A **capability-based, default-deny authorization firewall for MCP servers and AI agents** — with both a policy engine and real enforcement, not just advice.
+A **capability-based, default-deny authorization firewall for MCP servers and AI agents** — with both a policy engine and real strict enforcement, not just advice.
 
-NimoGuard sits between an AI agent and the actions it can take. It works two ways:
+NimoGuard sits between an AI agent and the actions it can take on its own. It works two ways:
 
-1. **As an MCP proxy** — it sits in front of a real MCP server; every `tools/call` is checked before it reaches the upstream server.
-2. **As a guarded execution layer** — `guardedReadFile`, `guardedWriteFile`, `guardedFetch`, and `guardedExec` only perform the real file read, file write, network request, or shell command **if the policy allows it**. Otherwise nothing happens — no file is touched, no process is spawned.
+1. **As an MCP proxy** — it sits in front of a real MCP server; every `tools/call` is checked before it reaches the upstream (next layer) server.
+2. **As a guarded execution layer** — `guardedReadFile`, `guardedWriteFile`, `guardedFetch`, and `guardedExec` only perform the real file read, file write, network request, or shell command **if the policy allows it**. Otherwise nothing happens — no file is touched or changed, no process is spawned.
 
 Anything not explicitly granted is denied. Every decision can be audited.
 
