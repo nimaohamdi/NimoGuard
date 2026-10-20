@@ -32,6 +32,15 @@ importers:
 
   packages/core: {}
 
+  packages/enforce:
+    dependencies:
+      '@nimoguard/audit':
+        specifier: workspace:*
+        version: link:../audit
+      '@nimoguard/core':
+        specifier: workspace:*
+        version: link:../core
+
   packages/mcp-proxy:
     dependencies:
       '@modelcontextprotocol/sdk':
