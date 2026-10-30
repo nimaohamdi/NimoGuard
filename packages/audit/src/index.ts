@@ -5,6 +5,8 @@ export type {
   ApprovalHandler,
   ApprovalOptions,
 } from "./approval.js";
+export { createWebhookApprovalHandler } from "./webhook-approval.js";
+export type { WebhookApprovalOptions } from "./webhook-approval.js";
 export { InMemoryAuditSink } from "./sink.js";
 export type { AuditRecord, AuditSink } from "./sink.js";
 export { JsonlFileAuditSink } from "./jsonl.js";
