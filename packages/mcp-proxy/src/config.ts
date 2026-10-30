@@ -1,12 +1,19 @@
 import { readFile } from "node:fs/promises";
 import type { Action, Capability } from "@nimoguard/core";
 
+export interface ApprovalConfig {
+  webhookUrl: string;
+  timeoutMs?: number;
+  authTokenEnv?: string;
+}
+
 export interface NimoGuardProxyConfig {
   agentId: string;
   upstreamServerName: string;
   upstreamCommand: string;
   upstreamArgs: string[];
   capabilities: Capability[];
+  approval?: ApprovalConfig;
 }
 
 const VALID_ACTIONS: Action[] = [
@@ -16,6 +23,8 @@ const VALID_ACTIONS: Action[] = [
   "network.request",
   "tool.call",
 ];
+
+const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
 
 export class ConfigError extends Error {
   constructor(message: string) {
@@ -59,6 +68,52 @@ function assertCapability(c: unknown, index: number): asserts c is Capability {
   }
 }
 
+function parseApproval(value: unknown): ApprovalConfig {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new ConfigError("approval must be an object if present");
+  }
+  const a = value as Record<string, unknown>;
+
+  if (!isString(a["webhookUrl"])) {
+    throw new ConfigError("approval.webhookUrl must be a non-empty string");
+  }
+
+  let url: URL;
+  try {
+    url = new URL(a["webhookUrl"]);
+  } catch {
+    throw new ConfigError("approval.webhookUrl must be a valid URL");
+  }
+
+  const secure =
+    url.protocol === "https:" ||
+    (url.protocol === "http:" && LOOPBACK_HOSTS.has(url.hostname));
+  if (!secure) {
+    throw new ConfigError(
+      "approval.webhookUrl must use https (http is only allowed for localhost)",
+    );
+  }
+
+  const approval: ApprovalConfig = { webhookUrl: a["webhookUrl"] };
+
+  if (a["timeoutMs"] !== undefined) {
+    const t = a["timeoutMs"];
+    if (typeof t !== "number" || !Number.isInteger(t) || t <= 0) {
+      throw new ConfigError("approval.timeoutMs must be a positive integer if present");
+    }
+    approval.timeoutMs = t;
+  }
+
+  if (a["authTokenEnv"] !== undefined) {
+    if (!isString(a["authTokenEnv"])) {
+      throw new ConfigError("approval.authTokenEnv must be a non-empty string if present");
+    }
+    approval.authTokenEnv = a["authTokenEnv"];
+  }
+
+  return approval;
+}
+
 function parseConfig(data: unknown): NimoGuardProxyConfig {
   if (typeof data !== "object" || data === null) {
     throw new ConfigError("root must be a JSON object");
@@ -83,13 +138,19 @@ function parseConfig(data: unknown): NimoGuardProxyConfig {
 
   obj["capabilities"].forEach((c, i) => assertCapability(c, i));
 
-  return {
+  const config: NimoGuardProxyConfig = {
     agentId: obj["agentId"],
     upstreamServerName: obj["upstreamServerName"],
     upstreamCommand: obj["upstreamCommand"],
     upstreamArgs: obj["upstreamArgs"] as string[],
     capabilities: obj["capabilities"] as Capability[],
   };
+
+  if (obj["approval"] !== undefined) {
+    config.approval = parseApproval(obj["approval"]);
+  }
+
+  return config;
 }
 
 export async function loadConfig(configPath: string): Promise<NimoGuardProxyConfig> {
