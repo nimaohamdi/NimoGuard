@@ -1,3 +1,16 @@
+<div align="center">
+
+  <img src="assets/IMG_6203.PNG" width="180" alt="NimoGuard Logo" />
+
+  <h1>NimoGuard</h1>
+
+  <p>Secure Authorization Firewall for AI Agents & MCP</p>
+
+  <img src="assets/IMG_6198.PNG" width="100%" alt="NimoGuard Preview" />
+
+</div>
+
+---
 # NimoGuard
 
 ![CI](https://github.com/nimaohamdi/NimoGuard/actions/workflows/ci.yml/badge.svg)
