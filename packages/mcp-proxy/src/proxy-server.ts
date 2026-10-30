@@ -1,5 +1,4 @@
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import {
@@ -7,9 +6,8 @@ import {
   CallToolRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import type { Capability } from "@nimoguard/core";
-import { authorizeAndAudit } from "@nimoguard/audit";
-import type { AuditSink } from "@nimoguard/audit";
-import { InMemoryAuditSink } from "@nimoguard/audit";
+import { authorizeWithApproval, InMemoryAuditSink } from "@nimoguard/audit";
+import type { ApprovalHandler, AuditSink } from "@nimoguard/audit";
 
 export interface ProxyOptions {
   upstreamServerName: string;
@@ -18,6 +16,8 @@ export interface ProxyOptions {
   agentId: string;
   capabilities: Capability[];
   sink?: AuditSink;
+  approvalHandler?: ApprovalHandler;
+  approvalTimeoutMs?: number;
 }
 
 export async function createProxy(options: ProxyOptions): Promise<{
@@ -47,7 +47,7 @@ export async function createProxy(options: ProxyOptions): Promise<{
     const toolName = request.params.name;
     const resource = `mcp://${options.upstreamServerName}/${toolName}`;
 
-    const decision = await authorizeAndAudit(
+    const decision = await authorizeWithApproval(
       {
         agentId: options.agentId,
         sessionId,
@@ -57,6 +57,10 @@ export async function createProxy(options: ProxyOptions): Promise<{
       },
       options.capabilities,
       sink,
+      {
+        handler: options.approvalHandler,
+        timeoutMs: options.approvalTimeoutMs,
+      },
     );
 
     if (decision.decision !== "ALLOW") {
@@ -75,32 +79,4 @@ export async function createProxy(options: ProxyOptions): Promise<{
   });
 
   return { proxyServer, upstreamClient };
-}
-
-// Run standalone: node dist/proxy-server.js
-if (import.meta.url === `file://${process.argv[1]}`) {
-  const { proxyServer } = await createProxy({
-    upstreamServerName: "demo-upstream",
-    upstreamCommand: "node",
-    upstreamArgs: [new URL("./upstream-server.js", import.meta.url).pathname],
-    agentId: "agent-1",
-    capabilities: [
-      {
-        id: "cap-echo",
-        agentId: "agent-1",
-        action: "tool.call",
-        scope: "mcp://demo-upstream/echo",
-      },
-      {
-        id: "cap-list",
-        agentId: "agent-1",
-        action: "tool.call",
-        scope: "mcp://demo-upstream/list_files",
-      },
-      // Note: read_file is intentionally NOT granted, to demonstrate a DENY.
-    ],
-  });
-
-  const transport = new StdioServerTransport();
-  await proxyServer.connect(transport);
 }
