@@ -22,5 +22,9 @@
     "webhookUrl": "https://approvals.internal.example.com/nimoguard",
     "timeoutMs": 30000,
     "authTokenEnv": "NIMOGUARD_APPROVAL_TOKEN"
+  },
+  "auditLog": {
+    "path": "/var/log/nimoguard/audit.jsonl",
+    "includeArguments": false
   }
 }

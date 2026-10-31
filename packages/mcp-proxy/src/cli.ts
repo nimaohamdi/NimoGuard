@@ -2,6 +2,7 @@
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { createWebhookApprovalHandler } from "@nimoguard/audit";
 import type { ApprovalHandler } from "@nimoguard/audit";
+import { buildAuditSink } from "./audit-sink.js";
 import { loadConfig, ConfigError } from "./config.js";
 import type { ApprovalConfig } from "./config.js";
 import { createProxy } from "./proxy-server.js";
@@ -44,9 +45,11 @@ async function main() {
   const { configPath } = parseArgs(process.argv.slice(2));
   const config = await loadConfig(configPath);
 
-  // Built before the upstream process is spawned, so a missing secret fails
-  // fast instead of leaving a half-started proxy.
+  // Everything that can fail because of the environment is checked here,
+  // before the upstream process is spawned, so a bad secret or an unwritable
+  // log path fails fast instead of leaving a half-started proxy.
   const approvalHandler = buildApprovalHandler(config.approval);
+  const sink = await buildAuditSink(config.auditLog);
 
   const { proxyServer } = await createProxy({
     agentId: config.agentId,
@@ -54,6 +57,7 @@ async function main() {
     upstreamCommand: config.upstreamCommand,
     upstreamArgs: config.upstreamArgs,
     capabilities: config.capabilities,
+    sink,
     approvalHandler,
     approvalTimeoutMs: config.approval?.timeoutMs ?? 30_000,
   });

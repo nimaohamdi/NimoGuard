@@ -20,7 +20,7 @@ A **capability-based, default-deny authorization firewall for MCP servers and AI
 
 NimoGuard sits between an AI agent and the actions it can take on its own. It works two ways:
 
-1. **As an MCP proxy**: it sits in front of a real MCP server; every `tools/call` is checked before it reaches the upstream (next layer) server. It is configured with a JSON file, started with one command, and supports optional human approval through a webhook.
+1. **As an MCP proxy**: it sits in front of a real MCP server; every `tools/call` is checked before it reaches the upstream (next layer) server. It is configured with a JSON file, started with one command, and supports optional human approval through a webhook and a persistent audit log.
 2. **As a guarded execution layer**: `guardedReadFile`, `guardedWriteFile`, `guardedFetch`, and `guardedExec` only perform the real file read, file write, network request, or shell command **if the policy allows it**. Otherwise nothing happens: no file is touched or changed, no process is spawned.
 
 Anything not explicitly granted is denied. Every decision can be audited.
@@ -61,6 +61,8 @@ Design decisions:
   and child processes are never touched for a denied request.
 - **Secrets stay out of config files.** The approval webhook token is read
   from an environment variable named in the config, never stored in it.
+- **Sensitive data stays out of the log by default.** Tool arguments are not
+  written to the audit log unless you explicitly opt in.
 
 ## Try the demos
 
@@ -194,8 +196,53 @@ redirect, or no answer within `timeoutMs`. Only `https` is accepted (plain
 that is not set, the CLI exits with an error before starting the upstream
 server.
 
-Both the approval request and the final decision are written to the audit
-sink under the same `requestId`.
+The webhook receives the tool arguments (a reviewer needs them to decide),
+even when they are kept out of the audit log.
+
+## Persistent audit log
+
+Add an `auditLog` block to write every decision to a file, one JSON object
+per line (JSONL):
+
+```json
+"auditLog": {
+  "path": "/var/log/nimoguard/audit.jsonl",
+  "includeArguments": false
+}
+```
+
+- `path` must be absolute. A client-launched process has an unpredictable
+  working directory, so a relative path is rejected at startup.
+- If the path is not writable, the CLI exits with an error before the
+  upstream server starts. It never runs without the log you asked for.
+- The file is created with owner-only permissions (`0600`), its directory
+  with `0700`.
+- **Tool arguments are not written by default.** They can contain tokens, file
+  contents, or personal data. Set `"includeArguments": true` to record them.
+- If a write fails while the proxy is running, the request is denied
+  (fail-closed): no log, no action.
+- An approval-gated call produces two records with the same `requestId`: the
+  `REQUIRE_APPROVAL` request, then the final `ALLOW` or `DENY`.
+
+One line looks like this (formatted here for reading):
+
+```json
+{
+  "requestId": "b305ee9b-5ff6-47a9-8e28-f59d550c2e64",
+  "timestamp": "2026-10-20T13:04:11.202Z",
+  "request": {
+    "agentId": "agent-1",
+    "sessionId": "proxy-session-1760965451000",
+    "action": "tool.call",
+    "resource": "mcp://demo-upstream/read_file"
+  },
+  "decision": {
+    "decision": "DENY",
+    "reason": "No matching capability",
+    "requestId": "b305ee9b-5ff6-47a9-8e28-f59d550c2e64"
+  }
+}
+```
 
 ## Quick example (guarded execution)
 
@@ -262,16 +309,16 @@ try {
 | MCP tool matcher (exact + server wildcard) | Done |
 | Expiring capabilities | Done |
 | Audit logging (fail-closed) | Done |
+| Persistent JSONL audit log from the CLI config | Done |
 | Human approval (`authorizeWithApproval`, webhook handler) | Done |
 | MCP proxy (stdio, forwards `tools/list` and `tools/call`) | Done |
-| Config-file-driven proxy + validated CLI, including approval | Done |
+| Config-file-driven proxy + validated CLI, including approval and audit log | Done |
 | Guarded fs/network/exec enforcement (`@nimoguard/enforce`) | Done |
-| Persistent audit log from the CLI config | Not implemented (the CLI keeps the audit log in memory only) |
 | Published to npm | Not yet (clone and build) |
 | Approval flow in `@nimoguard/enforce` | Not implemented (proxy only) |
 | `RiskLevel` (automatic risk scoring) | Not implemented |
 
-116 unit and integration tests, all passing in CI.
+130 unit and integration tests, all passing in CI.
 
 ## Threat model
 
@@ -288,6 +335,7 @@ Mitigated:
 - Expired or malformed capabilities
 - Malformed config files (rejected at startup)
 - Silent audit failure (logging errors deny the request)
+- Secrets leaking into the audit log through tool arguments (off by default)
 - Approval service failure: errors, timeouts, redirects, and malformed answers deny
 - Tool-name enumeration: an unrecognized tool is denied before the upstream
   server is ever contacted
@@ -295,10 +343,10 @@ Mitigated:
 
 ## Known limitations
 
-- **The CLI keeps its audit log in memory.** `JsonlFileAuditSink` exists in
-  `@nimoguard/audit`, but the CLI config cannot select it yet, so decisions are
-  lost when the proxy exits. Until this is fixed, use the library directly if
-  you need durable audit records.
+- **The audit log is not tamper-evident and has no rotation.** It is a plain
+  append-only file. Anyone with write access to it can edit it, and it grows
+  without bound. Ship it to a write-once store and rotate it with your usual
+  tooling (for example `logrotate` with `copytruncate`).
 - **Approval requests are authenticated with a bearer token only.** There is no
   request signing, so your approval service should only be reachable from the
   proxy's network and should treat `requestId` as single-use.

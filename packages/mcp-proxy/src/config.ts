@@ -1,10 +1,16 @@
 import { readFile } from "node:fs/promises";
+import path from "node:path";
 import type { Action, Capability } from "@nimoguard/core";
 
 export interface ApprovalConfig {
   webhookUrl: string;
   timeoutMs?: number;
   authTokenEnv?: string;
+}
+
+export interface AuditLogConfig {
+  path: string;
+  includeArguments?: boolean;
 }
 
 export interface NimoGuardProxyConfig {
@@ -14,6 +20,7 @@ export interface NimoGuardProxyConfig {
   upstreamArgs: string[];
   capabilities: Capability[];
   approval?: ApprovalConfig;
+  auditLog?: AuditLogConfig;
 }
 
 const VALID_ACTIONS: Action[] = [
@@ -114,6 +121,33 @@ function parseApproval(value: unknown): ApprovalConfig {
   return approval;
 }
 
+function parseAuditLog(value: unknown): AuditLogConfig {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new ConfigError("auditLog must be an object if present");
+  }
+  const a = value as Record<string, unknown>;
+
+  if (!isString(a["path"])) {
+    throw new ConfigError("auditLog.path must be a non-empty string");
+  }
+  if (!path.isAbsolute(a["path"])) {
+    throw new ConfigError(
+      "auditLog.path must be an absolute path (a client-launched process has an unpredictable working directory)",
+    );
+  }
+
+  const auditLog: AuditLogConfig = { path: a["path"] };
+
+  if (a["includeArguments"] !== undefined) {
+    if (typeof a["includeArguments"] !== "boolean") {
+      throw new ConfigError("auditLog.includeArguments must be a boolean if present");
+    }
+    auditLog.includeArguments = a["includeArguments"];
+  }
+
+  return auditLog;
+}
+
 function parseConfig(data: unknown): NimoGuardProxyConfig {
   if (typeof data !== "object" || data === null) {
     throw new ConfigError("root must be a JSON object");
@@ -148,6 +182,10 @@ function parseConfig(data: unknown): NimoGuardProxyConfig {
 
   if (obj["approval"] !== undefined) {
     config.approval = parseApproval(obj["approval"]);
+  }
+
+  if (obj["auditLog"] !== undefined) {
+    config.auditLog = parseAuditLog(obj["auditLog"]);
   }
 
   return config;
