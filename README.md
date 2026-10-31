@@ -318,7 +318,7 @@ try {
 | Approval flow in `@nimoguard/enforce` | Not implemented (proxy only) |
 | `RiskLevel` (automatic risk scoring) | Not implemented |
 
-130 unit and integration tests, all passing in CI.
+131 unit and integration tests, all passing in CI.
 
 ## Threat model
 
