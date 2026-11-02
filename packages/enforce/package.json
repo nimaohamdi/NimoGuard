@@ -1,15 +1,39 @@
 {
   "name": "@nimoguard/enforce",
   "version": "0.1.0",
-  "private": true,
+  "description": "NimoGuard guarded execution: file, network and command functions that only act if the policy allows it.",
+  "license": "MIT",
+  "author": "Nima Hamdi",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nimaohamdi/NimoGuard.git",
+    "directory": "packages/enforce"
+  },
+  "homepage": "https://github.com/nimaohamdi/NimoGuard#readme",
+  "bugs": {
+    "url": "https://github.com/nimaohamdi/NimoGuard/issues"
+  },
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "!dist/**/*.test.*",
+    "!dist/**/*.map",
+    "!dist/demo.*"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "demo": "pnpm build && node dist/demo.js",
-    "test": "pnpm build && node --test dist/**/*.test.js"
+    "test": "pnpm build && node --test dist/**/*.test.js",
+    "prepublishOnly": "pnpm build"
   },
   "dependencies": {
     "@nimoguard/core": "workspace:*",

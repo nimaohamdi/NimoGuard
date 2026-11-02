@@ -1,18 +1,43 @@
 {
   "name": "@nimoguard/mcp-proxy",
   "version": "0.1.0",
-  "private": true,
+  "description": "A default-deny authorization proxy for MCP servers, configured with a JSON file.",
+  "license": "MIT",
+  "author": "Nima Hamdi",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nimaohamdi/NimoGuard.git",
+    "directory": "packages/mcp-proxy"
+  },
+  "homepage": "https://github.com/nimaohamdi/NimoGuard#readme",
+  "bugs": {
+    "url": "https://github.com/nimaohamdi/NimoGuard/issues"
+  },
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
     "nimoguard-mcp-proxy": "dist/cli.js"
   },
+  "files": [
+    "dist",
+    "!dist/**/*.test.*",
+    "!dist/**/*.map",
+    "!dist/demo.*",
+    "!dist/upstream-server.*"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "pnpm build && node --test dist/**/*.test.js",
-    "demo": "pnpm build && node dist/demo.js"
+    "demo": "pnpm build && node dist/demo.js",
+    "prepublishOnly": "pnpm build"
   },
   "dependencies": {
     "@nimoguard/audit": "workspace:*",
